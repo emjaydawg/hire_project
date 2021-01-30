@@ -6,6 +6,13 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils.text import slugify
 
+def name_from_attached_user(user):
+    name = ""
+    if user.first_name or user.last_name:
+        name = "%s %s" % (user.first_name, user.last_name)
+    else:
+        name = user.username
+    return name
 
 class Profile(models.Model):
     STAFF = 1
@@ -32,6 +39,7 @@ class Profile(models.Model):
         null=True,
         blank=True)
 
+
     def __str__(self):
         roles = dict(self.PROFILE_CHOICES)
         if self.profile_type:
@@ -53,7 +61,6 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
 class Employee(models.Model):
     # Intentionally leaving this a text field
     # until we better understand hiring needs
-    # HERE
     user = models.OneToOneField(
         User,
         on_delete=models.RESTRICT)
@@ -61,7 +68,25 @@ class Employee(models.Model):
         blank=True,
         null=True)
     ratings = models.ManyToManyField(
-        'Rating')
+        'Rating',
+        blank=True,
+        null=True)
+
+    def average_rating(self):
+        sum = 0
+        ratings = self.ratings.values()
+        num_ratings = len(ratings)
+        if num_ratings:
+            for rating in ratings:
+                sum = sum + rating['score']
+        else:
+            return "Not yet rated"
+
+        return float(sum) / num_ratings / 2
+
+    def __str__(self):
+        name = name_from_attached_user(self.user)
+        return "%s (%s)" % (name, self.average_rating())
 
 class HiringManager(models.Model):
     user = models.OneToOneField(
@@ -74,18 +99,20 @@ class HiringManager(models.Model):
         on_delete=models.RESTRICT)
 
     def __str__(self):
-        user = self.user
-        name = ""
-        if user.first_name or user.last_name:
-            name = "%s %s" % (user.first_name, user.last_name)
-        else:
-            name = user.username
+        name = name_from_attached_user(self.user)
         return "%s: %s" % (self.company.name, name)
 
 class Rating(models.Model):
+    hiring_manager = models.ForeignKey(
+        HiringManager,
+        on_delete=models.RESTRICT)
     score = models.PositiveSmallIntegerField(
         validators=[MaxValueValidator(10), MinValueValidator(1)]
     )
+
+    def __str__(self):
+        name = name_from_attached_user(self.hiring_manager.user)
+        return "%s: %s" % (name, float(self.score) / 2)
 
 
 class Company(models.Model):
@@ -134,7 +161,6 @@ class Company(models.Model):
 
     def __str__(self):
         return "%s (%s)" % (self.slug, self.name)
-
 
 
 class Job(models.Model):
@@ -206,14 +232,57 @@ class Job(models.Model):
     def __str__(self):
         return "%s (%s)" % (self.title, self.slug)
 
-class Applications(models.Model):
-    # job
-    # status
-    # start_date
-    pass
+class Application(models.Model):
+    STATUS_APPLIED = "P"
+    STATUS_CONSIDERING = "C"
+    STATUS_ACCEPT = "A"
+    STATUS_DECLINE = "D"
 
-class Ratings(models.Model):
-    pass
+    STATUS_CHOICES = [
+      (STATUS_APPLIED, 'Applied'),
+      (STATUS_CONSIDERING, 'Considering'),
+      (STATUS_ACCEPT, 'Accepted'),
+      (STATUS_DECLINE, 'Decline'),
+    ]
 
-class Messages(models.Model):
-    pass
+    job = models.ForeignKey(
+        'Job',
+        on_delete=models.RESTRICT)
+    employee = models.ForeignKey(
+        'Employee',
+        on_delete=models.RESTRICT)
+    status = models.CharField(
+        max_length=1,
+        choices=STATUS_CHOICES,
+        default=STATUS_APPLIED)
+    start_date = models.DateField(
+        blank=True,
+        null=True)
+
+    def __str__(self):
+        status = dict(self.STATUS_CHOICES)[self.status]
+        return "%s(%s): %s" % (self.employee, self.job, status)
+
+class Message(models.Model):
+    from_user = models.ForeignKey(
+        User,
+        related_name="from_user",
+        on_delete=models.RESTRICT)
+    to_user = models.ForeignKey(
+        User,
+        related_name="to_user",
+        on_delete=models.RESTRICT)
+    subject = models.CharField(
+        max_length=60,
+    )
+    time_sent = models.DateTimeField(
+        auto_now_add=True)
+    time_read = models.DateTimeField(
+        blank=True,
+        null=True)
+    message = models.TextField()
+
+    def __str__(self):
+        from_name = name_from_attached_user(self.from_user)
+        to_name = name_from_attached_user(self.to_user)
+        return "%s -> %s / %s" % (from_name, to_name, self.subject)

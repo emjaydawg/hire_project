@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import User
 
-from .models import Company, Employee, HiringManager, Job, Profile, Rating
+from .models import Application, Company, Employee, HiringManager, Job, Message, Profile, Rating
 
 
 class ProfileInline(admin.StackedInline):
@@ -26,6 +26,7 @@ admin.site.register(
     readonly_fields=('slug',))
 
 admin.site.register(HiringManager)
+admin.site.register(Application)
 
 admin.site.register(Employee,)
 
@@ -33,6 +34,6 @@ admin.site.register(
     Job,
     readonly_fields=('slug',))
 
-#admin.site.register(Message,)
+admin.site.register(Message,)
 admin.site.register(Profile,)
 admin.site.register(Rating,)
